@@ -15,6 +15,17 @@
 ##   STEP 8 – Record processing time per species and export results.
 
 
+
+##############################
+### NOTE FOR FUTURE PERSON ###
+##############################
+
+##Add code to produce a measure of error or
+## coefficient of variation so we can have uncertainty associated to our SDM
+## maps (like an intervals of what suitability might be)
+
+
+
 # !! NAVIGATION WARNINGS !! ----------------------------------------------------
 
 # This is a highly sensible script! Here are some good practices to make sure
