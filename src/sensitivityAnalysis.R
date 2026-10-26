@@ -52,8 +52,8 @@ for(i in seq_len(nrow(sens_runs))){
       # output root (all runs live here)
       output_root <- file.path(project_root, "outputs")
       # sensitivity root
-      dir.create(file.path(output_root, "sensitivity_runs"), showWarnings = FALSE)
-      sens_output_root <- "E:/metaRange_May26/sensitivity_runs"
+      dir.create(file.path(output_root, "sensitivity_runs3"), showWarnings = FALSE)
+      sens_output_root <- "E:/metaRange_May26/outputs/sensitivity_runs4"
       # create run-specific directory (inside sensitivity root)
       runpath <- file.path(sens_output_root, runname)
       dir.create(runpath, recursive = TRUE, showWarnings = FALSE)
@@ -103,16 +103,23 @@ for(i in seq_len(nrow(sens_runs))){
       source(file.path("src", "mammalMetaRangeSpeciesDataframe.R"))
       
       # see which parameter this run is changing and by how much
+      sens_type <- sens_runs$type[i]
       sens_param <- sens_runs$parameter[i]
       sens_mult  <- sens_runs$multiplier[i]
       
-      if (sens_param != "NONE") {
+      if (sens_type == "trait") {
         species_traits <- species_traits |>
           dplyr::mutate(
             !!sens_param := .data[[sens_param]] * sens_mult
           )
-      } else {
+      } else if (sens_type == "none") {
+        
         message("Baseline run: no trait parameters modified.")
+        
+      } else if (sens_type == "suitability") {
+        
+        message("Suitability will be modified in the raster-loading section.")
+      
       }
       
       # overwrite table to .csv file in the same input folder
@@ -137,14 +144,14 @@ for(i in seq_len(nrow(sens_runs))){
         target_region <- "Europe"
       }
 
-      basePathSDM <- "E:/NatPoKe_SDMs"
+      basePathSDM <- "E:/metaRange_May26/data/sdm"
       # path for each biomes' SDM outputs
       biome_paths <- list(
-        tropical = "E:/NatPoKe_SDMs/tropical_SDMS",
-        boreal   = "E:/NatPoKe_SDMs/boreal_SDMS"
+        tropical = "E:/metaRange_May26/data/sdm/tropical_SDMS", #"E:/NatPoKe_SDMs/tropical_SDMS",
+        boreal   = "E:/metaRange_May26/data/sdm/boreal_SDMS"#"E:/NatPoKe_SDMs/boreal_SDMS"
       )
 
-      output_cropped <- file.path(basePathSDM, "biome_cropped")
+      #output_cropped <- file.path(basePathSDM, "biome_cropped")
 
       for (sp in target_species) {
 
@@ -158,11 +165,23 @@ for(i in seq_len(nrow(sens_runs))){
 
         # load raster
         r1 <- terra::rast(current_file)
+        # RESCALE 0-1000 → 0-1
+        r1 <- r1 / 1000
+        
+        if (sens_type == "suitability") {
+          
+          r1 <- r1 * sens_mult
+          
+          # make sure suitability stays within the 0-1 range
+          r1 <- terra::clamp(r1, lower = 0, upper = 1, values = TRUE)
+          
+          message("Modified suitability raster for ", sp, " using multiplier ", sens_mult)
+        }
+        
         # repeat the 1st layers 25 times to run metaRange after
         sp_raster <- rep(r1, 25)
         names(sp_raster) <- rep(as.character(2015), 25)
-        # RESCALE 0-1000 → 0-1
-        sp_raster <- sp_raster / 1000
+        
         invisible(gc())
         # load biome and continent geometries
         biome_sf <- load_biome(biome_name = target_biome)
@@ -259,7 +278,7 @@ for(i in seq_len(nrow(sens_runs))){
       n_replicates <- 3 # total nº of replicates
       all_reps_list <- list() # list to save the .csv
       # burn-in
-      burnin_t <- 25 # nº of years the model should consider
+      burnin_t <- 300 # nº of years the model should consider
       # global setup options
       set_verbosity(2L) # 0L = silent, 1L = progress updates, 2L =  debug
       options(scipen = 999) # prevents scientific notation for large numbers
@@ -569,7 +588,7 @@ gc()
 # Sensitivity Analysis
 # --------------------------------------------------------
 
-sens_output_root <- "E:/metaRange_May26/sensitivity_runs"
+sens_output_root <- "E:/metaRange_May26/outputs/sensitivity_runs4"
 
 # list all run directories
 run_dirs <- list.dirs(sens_output_root, recursive = FALSE, full.names = TRUE)
@@ -595,7 +614,7 @@ for (run_dir in run_dirs) {
     # select needed columns with TNIND per species
     dplyr::select(biome, region, species, timestep, rep, TNIND) %>% 
     # remove  burn in values
-    dplyr::filter(timestep > 25) %>% 
+    dplyr::filter(timestep > 300) %>% 
     # add run name
     dplyr::mutate(run_name = run_name)
   
@@ -630,8 +649,8 @@ baseline_df <- TNIND_sp2 %>%
 sens_df <- TNIND_sp2 %>% 
   filter(!grepl("baseline", run_name)) %>% 
   mutate(
-    region = sub("_(repro|mort|survival|dispersal).*", "", run_name),
-    label  = stringr::str_extract(run_name, "(repro|mort|survival|dispersal)[0-9]+"),
+    region = sub("_(repro|mort|survival|dispersal|maxdispersal|suitability).*", "", run_name),
+    label  = stringr::str_extract(run_name, "(repro|mort|survival|dispersal|maxdispersal|suitability)[0-9]+"),
     species = gsub(".", " ", species, fixed = TRUE)) %>% 
   left_join(
     baseline_df,
@@ -660,9 +679,11 @@ sens_df <- sens_df %>%
     significant = abs(percent_change) > 20,
     label = case_when(label == "dispersal1015" ~ "dispersal105", 
                       TRUE ~ label)) %>%
-  mutate(label = factor(label, levels = c("dispersal095", "dispersal105",
+  mutate(label = factor(label, levels = c("suitability095", "suitability105",
+                                          "dispersal095", "dispersal105",
                                           "repro095", "repro105",
-                                          "survival095", "survival105")))
+                                          "survival095", "survival105",
+                                          "maxdispersal050", "maxdispersal150")))
 # save output as .csv
 write.csv(sens_df, file = file.path(sens_output_root, "sensitivity_proportions_values.csv"))
 
@@ -684,6 +705,13 @@ for (current_region in regions) {
   sens_region_df <- sens_df %>% 
     dplyr::filter(region == current_region)
   
+  sens_region_df$label <- factor(sens_region_df$label, 
+                                 levels = c("suitability095", "suitability105",
+                                            "dispersal095", "dispersal105", 
+                                            "maxdispersal050", "maxdispersal150",
+                                            "repro095", "repro105",
+                                            "survival095", "survival105"))
+  
   # Species to label
   labels_df <- sens_region_df %>%
     filter(significant)
@@ -699,8 +727,12 @@ for (current_region in regions) {
     scale_colour_manual(values = c(`FALSE` = "grey50", `TRUE` = "red"),
                         guide = "none") +
     # label sps outside safe zone
-    geom_text(data = subset(sens_region_df, significant), 
-              aes(label = species), size = 2, vjust = 1, fontface = "italic") +
+    # avoid overlapping labels
+    geom_text_repel(data = subset(sens_region_df, significant), aes(label = species), size = 2,
+                    fontface = "italic", box.padding = 0.4, point.padding = 0.3,
+                    force = 1, max.overlaps = Inf, min.segment.length = 0) +
+    #geom_text(data = subset(sens_region_df, significant), 
+     #         aes(label = species), size = 2, vjust = 1, fontface = "italic") +
     # spread out points
     geom_jitter(width = 0.15, alpha = 0.5, size = 1) +
     coord_flip() +
@@ -708,7 +740,15 @@ for (current_region in regions) {
         y = " ",
          x = NULL) +
     theme_minimal() +
-    scale_y_continuous(limits = c(-25, 60)) +
+    scale_x_discrete(
+      limits = c("suitability095", "suitability105",
+                 "dispersal095", "dispersal105", 
+                 "maxdispersal050", "maxdispersal150",
+                 "repro095", "repro105",
+                 "survival095", "survival105"),
+      drop = FALSE
+    ) +
+    #scale_y_continuous(limits = c(-60, 80)) +
     theme(strip.background = element_rect(fill = "#F2F2F2", colour = NA),
           strip.text = element_text(face = "bold", size = 10)
           #axis.text.x = element_text(angle = 40, hjust = 1)
@@ -717,7 +757,7 @@ for (current_region in regions) {
   regions_plots[[current_region]] <- sens_region
   
 }
-
+regions_plots$`Europe+Asia`
 # assemble final plot
 final_plot <- wrap_plots(
   A = regions_plots$`North America`,
@@ -733,7 +773,7 @@ final_plot <- wrap_plots(
 final_plot
 
 # save supplementary figure
-ggsave("E:/metaRange_May26/FigureAndMetrics/SupplementaryFigure_SensitivityAnalysis.png",
+ggsave("E:/metaRange_May26/outputs/FigureAndMetrics/SupplementaryFigure_SensitivityAnalysis3.png",
        final_plot,
        bg = "transparent", width = 320, height = 320, units = "mm", dpi = 1200)
 
