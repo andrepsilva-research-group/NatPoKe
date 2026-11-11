@@ -17,7 +17,7 @@ message("Starting to average rasters across replicates")
 # species to find
 #target_species
 # specify the number of timesteps 
-timesteps <- seq(from = 26, to = 136)
+timesteps <- seq(from = 300, to = 411)
 # specify which traits to average
 traits_of_interrest <- c("abundance", "reproductionRate", "dispersalChange")
 #dirout <- "D:/metaRange_April26/Africa_ssp126_20260405/Outputs"
