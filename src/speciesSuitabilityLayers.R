@@ -35,11 +35,11 @@ if (target_region == "Europe+Asia") {
 
 ## path for biomes' SDM outputs
 biome_paths <- list(                      
-   tropical = "D:/NatPoKe_SDMs/tropical_SDMS", #"./data/sdm/tropical_SDMS",
-   boreal   = "D:/NatPoKe_SDMs/boreal_SDMS" #"./data/sdm/boreal_SDMS"
+   tropical = "E:/metaRange_May26/data/sdm/tropical_SDMS", #"D:/NatPoKe_SDMs/tropical_SDMS", #"./data/sdm/tropical_SDMS",
+   boreal   = "E:/metaRange_May26/data/sdm/boreal_SDMS" #"D:/NatPoKe_SDMs/boreal_SDMS" #"./data/sdm/boreal_SDMS"
  )
 
-processedSDM_dir <- "D:/NatPoKe_SDMs/processedSDMs"
+processedSDM_dir <- "E:/metaRange_May26/data/sdm/processedSDMs"#"D:/NatPoKe_SDMs/processedSDMs"
 
 ##########
 # STEP 2 # Stack projections per species & Interpolate (Save intermeadiate output)
@@ -108,10 +108,8 @@ message("Start Rescaling, Cropping and Masking Output Rasters")
 for (sp in target_species) {
   
   # expected input raster
-  raster_file <- file.path(
-    processedSDM_dir,
-    paste0(sp, "_", biome, "_", future_scenario, "interpolated.tif")
-  )
+  raster_file <- file.path(processedSDM_dir,
+                           paste0(sp, "_", biome, "_", future_scenario, "interpolated.tif"))
   
   # skip if file does not exist
   if (!file.exists(raster_file)) next
@@ -124,31 +122,30 @@ for (sp in target_species) {
   invisible(gc())
   
   # load biome and continent geometries
-  biome_sf <- load_biome(biome_name = target_biome)
+  #biome_sf <- load_biome(biome_name = target_biome)
   continent_sf <- load_select_continents(continent_names = target_region)
   
   # Crop biome to continents
   sf_use_s2(FALSE)
-  target_geom <- crop_biome_to_continent(biome_sf, continent_sf)
+  #target_geom <- crop_biome_to_continent(biome_sf, continent_sf)
   invisible(gc())
   
   # CROP and MASK raster
-  sp_raster <- terra::crop(sp_raster, target_geom)
-  sp_raster <- terra::mask(sp_raster, target_geom)
+  sp_raster <- terra::crop(sp_raster, continent_sf)
+  #sp_raster <- terra::mask(sp_raster, target_geom)
   invisible(gc())
   
   # output filename
-  output_path <- file.path(
-    dirinput,
-    paste0(sp, "_", biome, "_", future_scenario, "_cropped.tif")
-  )
+  output_path <- file.path(dirinput,
+                           paste0(sp, "_", biome, "_", future_scenario, "_cropped.tif"))
   
   # save raster
   writeRaster(sp_raster, output_path, overwrite = TRUE)
   message("Processed and saved: ", basename(output_path))
   
   # cleanup
-  rm(raster_file, biome_sf, continent_sf, target_geom, sp_raster, output_path)
+  rm(raster_file, #biome_sf, 
+     continent_sf, target_geom, sp_raster, output_path)
   invisible(gc())
 }
 
@@ -179,13 +176,13 @@ for (landscape in landscapes) {
   # crop and mask - to ensure no dead pixels in the corners
   
   # load biome and continent geometries
-  biome_sf <- load_biome(biome_name = target_biome)
+  #biome_sf <- load_biome(biome_name = target_biome)
   continent_sf <- load_select_continents(continent_names = target_region)
   # crop biome to continents
   sf_use_s2(FALSE)
-  target_geom <- crop_biome_to_continent(biome_sf, continent_sf)
+  #target_geom <- crop_biome_to_continent(biome_sf, continent_sf)
   # project target region to ronbinson
-  target_geom_robinson <- st_transform(target_geom, crs = targetRegionCRS)
+  target_geom_robinson <- st_transform(continent_sf, crs = targetRegionCRS)
   invisible(gc())
   
   # CROP and MASK raster
