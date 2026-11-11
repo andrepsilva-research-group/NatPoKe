@@ -47,6 +47,7 @@ if (target_biome == "Tropical & Subtropical Moist Broadleaf Forests") {
 } else if (target_biome == "Boreal Forests/Taiga") {
   biome <- "boreal"
 }
+
 # clean target biome and region names (removes special characters like /, &, and space)
 target_biome <- gsub("[/& ]", "", target_biome)
 target_region <- gsub("[/& ]", "", target_region)
@@ -56,6 +57,8 @@ if (target_region == "Europe") {
   target_region <- "Europe+Asia"
 }
 
+targetRegionCRS <- "ESRI:54030"
+
 # select target species from dataframe to avoid errors
 target_species <- species_traits$Species # by default, this selects *all* species in the traits df
 
@@ -64,7 +67,7 @@ n_replicates <- 3 # total nº of replicates
 all_reps_list <- list() # list to save the .csv
 
 # burn-in
-burnin_t <- 25 # nº of years the model should consider
+burnin_t <- 300 # nº of years the model should consider
 
 # global setup options
 set_verbosity(2L) # 0L = silent, 1L = progress updates, 2L =  debug
@@ -88,6 +91,32 @@ for (replicateN in 1:n_replicates) {
   sim_env <- sds(list.files(dirinput,
                             pattern = paste0("_", biome, "_", future_scenario, "_cropped_reprojectedm.tif"), full.names = TRUE))
   invisible(gc())
+  
+    # Step 1.1 # create a biome mask (to allow modelling in the full landscape but only save results wihtin the biomes)
+    biome_rast <- load_biome(biome_name = target_biome)
+    continent_sf <- load_select_continents(continent_names = target_region)
+    
+    sf_use_s2(FALSE)
+    # crop biome raster to the selected continent
+    target_geom <- crop_biome_to_continent(biome_rast, continent_sf)
+    
+    
+    # project target region to ronbinson
+    biome_aligned <- st_transform(target_geom, crs = targetRegionCRS)
+    invisible(gc())
+    # Convert biome geometry to terra vector
+    biome_vect <- terra::vect(biome_aligned)
+    
+    # Rasterise biome geometry using simulation landscape as template
+    biome_mask <- terra::rasterize(biome_vect, sim_env[[1]], field = 1, background = NA)
+    # Convert to binary mask
+    biome_mask <- terra::ifel(!is.na(biome_mask), 1, NA)
+    # Convert to matrix for abundance calculations
+    biome_mask_matrix <- as.matrix(biome_mask, wide = TRUE)
+    # Identify biome cells
+    biome_cells <- !is.na(biome_mask_matrix)
+    
+    invisible(gc())
   
   # Step 2 # Create a simulation object 
   
@@ -113,11 +142,43 @@ for (replicateN in 1:n_replicates) {
     range_raster <- rasterize(iucn_sps, sim_env[[i]], values = 1)
     range_raster <- terra::subst(range_raster, NA, 0)
     
+    # Calculate initial abundance
+    initial_abundance <- as.matrix(
+      range_raster * species_traits[["initialAbundance"]][i],
+      wide = TRUE
+    )
+    
+    # Randomly select 70% of cells
+    valid_cells <- which(!is.na(initial_abundance))
+    n_selected <- round(length(valid_cells) * 0.70)
+    
+    selected_cells <- sample(valid_cells, n_selected)
+    
+    # Set abundance to zero in the other 30% of cells
+    abundance_70 <- initial_abundance
+    abundance_70[-selected_cells] <- 0
+    
+    # Original species-specific dispersal parameters
+    dispersal_distance <- as.numeric(species_traits[["dispersalDistance"]][i])
+    
+    dispersal_max_distance <- as.numeric(species_traits[["dispersalMaxDistance"]][i])
+    
+    # Decide the number of dispersal events per year
+    if (dispersal_distance / 12 < 1) {
+      n_iterations <- 1L } else {
+      n_iterations <- 12L
+      }
+    
+    # Scale distances according to the number of events
+    step_mean_distance <- dispersal_distance / sqrt(n_iterations)
+    step_max_distance <- dispersal_max_distance / sqrt(n_iterations)
+    step_max_radius <- max(1L, ceiling(step_max_distance))
+    
     # traits that need to be stored at the population level
     sim$add_traits(
       species = this_species,
       population_level = TRUE,
-      "abundance" = as.matrix(range_raster * species_traits[["initialAbundance"]][i], wide = TRUE),
+      "abundance" = abundance_70, #as.matrix(range_raster * species_traits[["initialAbundance"]][i], wide = TRUE),
       "abundance_before" = 0,
       "reproductionRate" = species_traits[["reproductionRate"]][i],
       "carryingCapacity" = species_traits[["carryingCapacity"]][i],
@@ -127,15 +188,15 @@ for (replicateN in 1:n_replicates) {
     sim$add_traits(
       species = this_species,
       population_level = FALSE,
-      "dispersalDistance" =  species_traits[["dispersalDistance"]][i],
+      "dispersalDistance" =  dispersal_distance,
       "maxReproductionRate" = species_traits[["reproductionRate"]][i],
       "maxCarryingCapacity" = species_traits[["carryingCapacity"]][i],
       
       # simple dispersal kernel
       "dispersalKernel" = calculate_dispersal_kernel(
-        max_dispersal_dist = as.integer(species_traits[["dispersalMaxDistance"]][i]),
+        max_dispersal_dist = as.integer(step_max_radius),
         kfun = negative_exponential_function,
-        mean_dispersal_dist = species_traits[["dispersalDistance"]][i],
+        mean_dispersal_dist = step_mean_distance,
       )
     )
   }
@@ -197,20 +258,30 @@ for (replicateN in 1:n_replicates) {
     species = species_names,
     process_name = "dispersal_process",
     process_fun = function() {
+      
       # save the number of individuals before dispersing
       self$traits[["abundance_before"]] <- trunc(self$traits[["abundance"]])
-      # weighted dispersal
-      # i.e. individuals disperse more likely into more suitable cells
-      abundance_after <- dispersal(
-        abundance = self$traits[["abundance"]],
-        weights = self$sim$environment$current[[paste0(self$name, "_", biome, "_", future_scenario, "_cropped_reprojectedm")]],
-        dispersal_kernel = self$traits[["dispersalKernel"]])
       
-      # adding randomness?
+      # Repeat dispersal according to species-specific strategy (either 1 event per year or yearly dispersion events)
+      for (iteration in seq_len(n_iterations)) {
+        
+        # weighted dispersal
+        # i.e. individuals disperse more likely into more suitable cells
+        abundance_after <- dispersal(
+          abundance = self$traits[["abundance"]],
+          weights = self$sim$environment$current[[paste0(self$name, "_", biome, "_", future_scenario, "_cropped_reprojectedm")]],
+          dispersal_kernel = self$traits[["dispersalKernel"]])
+        
+      }
+
+      # adding randomness (stochasticity)
       abundance_after <- matrix(rpois(ncell(abundance_after), abundance_after),
                                 nrow = nrow(self$traits[["abundance"]]),
                                 ncol = ncol(self$traits[["abundance"]]))
+      
+      # update abundance after dispersing
       self$traits[["abundance"]] <- abundance_after
+      
       # calculate the dispersal change
       self$traits[["dispersalChange"]] <- self$traits[["abundance"]] - self$traits[["abundance_before"]]
     },
@@ -233,12 +304,27 @@ for (replicateN in 1:n_replicates) {
   sim$add_process(
     process_name = "track_stats",
     process_fun = function() {
+      
       for (i in self$globals[["alive_species"]]) {
-        current_abu <- sum(self[[i]]$traits[["abundance"]], na.rm = TRUE) # sum up all abundances across cells
-        # remove species from future process queue if extinct
-        # i.e. we don't need to calculate suitability for extinct species
-        if (current_abu <= 1) {
+        
+        # Get current abundance matrix
+        current_abundance <- self[[i]]$traits[["abundance"]]
+        
+        # Restrict abundance to focal biome
+        biome_abundance <- current_abundance
+        biome_abundance[!biome_cells] <- NA
+        
+        # Calculate total abundance within biome
+        current_abu <- sum(biome_abundance, na.rm = TRUE)
+        
+        # Remove species from future process queue if extinct
+        # Extinction is still evaluated across the FULL landscape
+        full_landscape_abu <- sum(current_abundance, na.rm = TRUE)
+        
+        if (full_landscape_abu <= 1) {
+          
           current_abu <- 0
+          
           for (p in self[[i]]$processes) {
             self$queue$dequeue(p$get_PID())
           }
@@ -247,25 +333,27 @@ for (replicateN in 1:n_replicates) {
             self$globals[["alive_species"]][
               self$globals[["alive_species"]] != i
             ]
+          
           if (length(self$globals[["alive_species"]]) == 0) {
             print("all species extinct")
             self$exit()
           }
         }
+
         self$globals[[i]][["n_abundance"]][[self$get_current_time_step()]] <-
           current_abu # for sps still alive save total abundance for each time step
         
         self$globals[[i]][["mean_abundance"]][[self$get_current_time_step()]] <-
-          mean(self[[i]]$traits[["abundance"]], na.rm = TRUE) # mean abundance of species in the landscape
+          mean(biome_abundance, na.rm = TRUE) # mean abundance of species in the landscape
         
         self$globals[[i]][["mean_rrate"]][[self$get_current_time_step()]] <-
-          mean(self[[i]]$traits[["reproductionRate"]], na.rm = TRUE) # mean reproduction rate
+          mean(self[[i]]$traits[["reproductionRate"]][biome_cells], na.rm = TRUE) # mean reproduction rate
         
         self$globals[[i]][["mean_ccap"]][[self$get_current_time_step()]] <-
-          mean(self[[i]]$traits[["carryingCapacity"]], na.rm = TRUE) # mean carrying capacity
+          mean(self[[i]]$traits[["carryingCapacity"]][biome_cells], na.rm = TRUE) # mean carrying capacity
         
         self$globals[[i]][["n_occupied"]][[self$get_current_time_step()]] <-
-          sum(self[[i]]$traits[["abundance"]] > 1, na.rm = TRUE) # sum up all cells occupied by each alive sps
+          sum(biome_abundance > 1, na.rm = TRUE) # sum up all cells occupied by each alive sps
         
       }
     },
@@ -273,26 +361,52 @@ for (replicateN in 1:n_replicates) {
   )
   
   
-  # saving results
+  # Saving biome-specific output rasters
+  
   sim$add_process(
     process_name = "saving_traits",
     process_fun = function() {
+      
       for (species in species_names) {
         
-        # save all replicates
-        results_paths <- save_species(
-          # pass the species object
-          self[[species]],
-          # specify traits we want to save
-          traits = c("abundance", "reproductionRate", "dispersalChange"),
-          # a prefix for each time step
-          prefix = paste0(sim$ID, sprintf("%03d", self$get_current_time_step()), "_"),
-          # where should it be saved
-          path = dirout,
-          overwrite = TRUE
-        )
+        # Traits to save
+        traits_to_save <- c("abundance", "reproductionRate", "dispersalChange")
         
-        self$globals$results_paths <- c(self$globals$results_paths, results_paths)
+        # Store original full-landscape traits
+        original_traits <- lapply(traits_to_save,
+          function(trait) self[[species]]$traits[[trait]])
+        
+        names(original_traits) <- traits_to_save
+        
+        # Temporarily mask values outside the focal biome
+        for (trait in traits_to_save) {
+          
+          masked_trait <- self[[species]]$traits[[trait]]
+          
+          masked_trait[!biome_cells] <- NA
+          
+          self[[species]]$traits[[trait]] <- masked_trait
+        }
+        
+        # Save masked traits
+        results_paths <- save_species(self[[species]],
+          traits = traits_to_save,
+          prefix = paste0(sim$ID, sprintf("%03d", self$get_current_time_step()), "_"),
+          path = dirout, overwrite = TRUE)
+        
+        # Restore original full-landscape traits (this is because modify the
+        # underlying abundance matrix by applying the biome mask, would interfere
+        # with subsequent reproduction and dispersal events)
+        for (trait in traits_to_save) {
+          
+          self[[species]]$traits[[trait]] <-
+            original_traits[[trait]]
+        }
+        
+        # Keep track of output paths
+        self$globals$results_paths <-
+          c(self$globals$results_paths, results_paths)
+        
       }
     },
     execution_priority = 6
