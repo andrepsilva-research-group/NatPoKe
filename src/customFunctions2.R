@@ -32,13 +32,22 @@ extract_legend <- function(plot) {
 # Function to load and select the biome shapefile
 load_biome <- function(biome_name) {
   biome_sf <- sf::st_read("./data/externaldata/Ecoregions2017/Ecoregions2017.shp")
-  biome_sf[biome_sf$BIOME_NAME == biome_name, ]
+  # Standardise biome names (remove spaces, / and &)
+  standardise_name <- function(x) {
+    tolower(gsub("[/& ]", "", x))}
+  # Match standardised names
+  biome_sf[
+    standardise_name(biome_sf$BIOME_NAME) %in% standardise_name(biome_name),
+  ]
 }
 
 ### Select & load continents ---------------------------------------------------
 
 load_select_continents <- function(continent_names) {
   continents <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
+  # standardise input names
+  continent_names <- gsub("\\s+", "", continent_names)
+  continent_names <- gsub("\\+", "&", continent_names)
   merged_continents <- list() # Initialize an empty list to store merged continents
   
   # Handle merged "Central & South America"
@@ -77,12 +86,17 @@ load_select_continents <- function(continent_names) {
     continent_names <- setdiff(continent_names, "Europe & Asia")
   }
   
-  # Filter the remaining continents
+  # Match remaining continents (ignoring spaces)
+  continent_lookup <- gsub("\\s+", "", continents$continent)
+  
   remaining_continents <- continents %>%
-    dplyr::filter(continent %in% continent_names)
+    dplyr::filter(continent_lookup %in% continent_names)
   
   # Combine merged and remaining continents
-  all_continents <- do.call(rbind, c(merged_continents, list(remaining_continents)))
+  all_continents <- dplyr::bind_rows(
+    merged_continents,
+    list(remaining_continents)
+  )
   
   # Return the final dataset
   return(all_continents)
