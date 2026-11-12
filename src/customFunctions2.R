@@ -44,61 +44,45 @@ load_biome <- function(biome_name) {
 ### Select & load continents ---------------------------------------------------
 
 load_select_continents <- function(continent_names) {
-  continents <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
-  # standardise input names
-  continent_names <- gsub("\\s+", "", continent_names)
-  continent_names <- gsub("\\+", "&", continent_names)
-  merged_continents <- list() # Initialize an empty list to store merged continents
   
-  # Handle merged "Central & South America"
-  if ("Central & South America" %in% continent_names) {
+  continents <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
+  
+  # Standardise names
+  continent_names <- gsub(" ", "", continent_names)
+  continent_names <- gsub("+", "&", continent_names, fixed = TRUE)
+  
+  merged_continents <- list()
+  
+  if ("Central&SouthAmerica" %in% continent_names) {
+    
     central_south_america <- continents %>%
       dplyr::filter(subregion %in% c("Central America", "South America", "Caribbean")) %>%
-      dplyr::summarise(geometry = st_union(geometry)) %>%
+      dplyr::summarise(geometry = sf::st_union(geometry)) %>%
       dplyr::mutate(continent = "Central & South America")
     
-    # Ensure column consistency
-    missing_columns <- setdiff(names(continents), names(central_south_america))
-    for (col in missing_columns) {
-      central_south_america[[col]] <- NA  # Add missing columns with NA values
-    }
-    central_south_america <- central_south_america[names(continents)]  # Reorder columns to match `continents`
-    
-    # Add to merged continents
-    merged_continents[["Central & South America"]] <- central_south_america
-    
-    # Remove "Central & South America" from the continent names
-    continent_names <- setdiff(continent_names, "Central & South America")
+    merged_continents <- append(merged_continents, list(central_south_america))
+    continent_names <- setdiff(continent_names, "Central&SouthAmerica")
   }
   
-  # Handle merged "Europe & Asia"
-  if ("Europe & Asia" %in% continent_names) {
+  if ("Europe&Asia" %in% continent_names) {
+    
     europe_asia <- continents %>%
-      dplyr::filter(continent %in% c("Europe")) %>%
-      dplyr::summarise(geometry = st_union(geometry)) %>%
+      dplyr::filter(continent %in% c("Europe", "Asia")) %>%
+      dplyr::summarise(geometry = sf::st_union(geometry)) %>%
       dplyr::mutate(continent = "Europe & Asia")
-    missing_columns <- setdiff(names(continents), names(europe_asia))
-    for (col in missing_columns) {
-      europe_asia[[col]] <- NA
-    }
-    europe_asia <- europe_asia[names(continents)]
-    merged_continents[["Europe & Asia"]] <- europe_asia
-    continent_names <- setdiff(continent_names, "Europe & Asia")
+    
+    merged_continents <- append(merged_continents, list(europe_asia))
+    continent_names <- setdiff(continent_names, "Europe&Asia")
   }
-  
-  # Match remaining continents (ignoring spaces)
-  continent_lookup <- gsub("\\s+", "", continents$continent)
   
   remaining_continents <- continents %>%
-    dplyr::filter(continent_lookup %in% continent_names)
+    dplyr::filter(gsub(" ", "", continent) %in% continent_names)
   
-  # Combine merged and remaining continents
-  all_continents <- dplyr::bind_rows(
-    merged_continents,
-    list(remaining_continents)
-  )
+  all_continents <- dplyr::bind_rows(merged_continents, list(remaining_continents))
   
-  # Return the final dataset
+  all_continents <- sf::st_wrap_dateline(all_continents,
+                                         options = c("WRAPDATELINE=YES", "DATELINEOFFSET=180"),
+                                         quiet = TRUE)
   return(all_continents)
 }
 
