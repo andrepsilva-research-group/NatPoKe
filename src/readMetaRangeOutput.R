@@ -20,7 +20,7 @@ TNIND_paths <- list()
 
 if (length(TNIND_paths) == 0) {
   
-  runs <- read.csv("./data/run_table.csv", stringsAsFactors = FALSE)
+  runs <- read.csv("./data/run_table_longBurnIn.csv", stringsAsFactors = FALSE)
   
   TNIND_paths <- character(0)
   
@@ -33,13 +33,13 @@ if (length(TNIND_paths) == 0) {
     runname <- paste(
       target_region,
       future_scenario,
-      "20260517",
+      "20261110",
       #format(Sys.time(), "%Y%m%d"),
       sep = "_"
     )
 
     tnind_file <- file.path(
-      "E:/metaRange_May26", 
+      "E:/metaRange_May26/outputs/checkup_fullModellingArea", 
       runname, "Outputs",
       paste0("TNIND_yr_", runname, ".csv")
     )
@@ -112,11 +112,11 @@ TNIND_yr <- TNIND_yr %>%
 # STEP 3 #  Write complete dataset into .csv (RAW DATA)
 ##########
 # output root (all runs live here)
-output_root <- "E:/metaRange_May26"
+output_root <- "E:/metaRange_May26/outputs/checkup_fullModellingArea"
 
 write_csv(TNIND_yr, 
           file = file.path(output_root, paste0("completeMetaRangeRun_", #format(Sys.time(), "%Y%m%d"),
-                                               "20260517",
+                                               "20261110",
                                                ".csv")))
 
 # metadata file
@@ -188,7 +188,7 @@ metadata <- tibble::tribble(
   "Integer",
   "Integer")
 
-write_csv(metadata, file = file.path( output_root, "completeMetaRangeRun_20260517_metadata.csv"))
+write_csv(metadata, file = file.path(output_root, "completeMetaRangeRun_20261110_metadata.csv"))
 
 ################################
 # DIAGNOSTIC POPULATION TRENDS # 
@@ -197,7 +197,7 @@ write_csv(metadata, file = file.path( output_root, "completeMetaRangeRun_2026051
 # STEP 1 # Build and excel file
 
 # create folder to save diagnostics
-diagnostics_dir <- file.path("E:/metaRange_May26", "diagnostics")
+diagnostics_dir <- file.path("E:/metaRange_May26/outputs/checkup_fullModellingArea", "diagnostics")
 dir.create(diagnostics_dir, showWarnings = TRUE)
 
 # get number of sps per combin
@@ -235,7 +235,7 @@ writeData(wb, "perReplicate", TNIND_diff)
 addWorksheet(wb, "acrossReplicates")
 writeData(wb, "acrossReplicates", TNIND_mean)
 saveWorkbook(wb, file.path(diagnostics_dir, paste0("metaRangeRun_", 
-                                                   "20260517",
+                                                   "20261110",
                                                    #Sys.Date(),
                                                    "_diagnostics.xlsx")), overwrite = TRUE)
 invisible(gc())
@@ -270,7 +270,13 @@ for (i in seq_len(nrow(combo_list))) {
     geom_line() +
     # add line for burn-in
     geom_vline(xintercept = 25, linetype="dotted", 
+               color = "blue") +
+    # add line for new burnin
+    geom_vline(xintercept = 100, linetype="dotted", 
                color = "red") +
+    # add yet another line for new burnin
+    geom_vline(xintercept = 300, linetype="dotted", 
+               color = "green") +
     facet_wrap(~species, scales = "free_y") +
     labs(title = paste0(biome_title, " – ", r, " – ", s),
          subtitle = "Species population trends") +
@@ -335,7 +341,9 @@ for (i in seq_len(nrow(combo_list))) {
     group = factor(rep_num),
     color = factor(rep_num))) +
     geom_line(size = 0.8, alpha = 0.7) +
-    geom_vline(xintercept = 25, linetype = "dashed") +
+    geom_vline(xintercept = 25, linetype = "dashed", color = "blue") +
+    geom_vline(xintercept = 100, linetype = "dashed", color = "red") +
+    geom_vline(xintercept = 300, linetype = "dashed", color = "green") +
     labs(
       title = paste(sp, "- Replicates"),
       x = "Timestep", y = "TNIND", color = "Replicate") +
@@ -379,13 +387,13 @@ for (i in seq_len(nrow(runs))) {
   runname <- paste(
     target_region,
     future_scenario,
-    "20260517",
+    "20261110",
     #format(Sys.time(), "%Y%m%d"),
     sep = "_"
   )
   
   traitdf_file <- file.path(
-    "E:/metaRange_May26", 
+    "E:/metaRange_May26/outputs/checkup_fullModellingArea", 
     runname, "Inputs",
     "metaRangeSpeciesDataframe.csv")
   
@@ -413,7 +421,7 @@ rm(traits_all_runs)
 invisible(gc())
 
 # Save merged .xlsx
-write_xlsx(all_traits, file.path("E:/metaRange_May26", "completeTraitDataframe_allSps.xlsx"))
+write_xlsx(all_traits, file.path("E:/metaRange_May26/outputs/checkup_fullModellingArea", "completeTraitDataframe_allSps.xlsx"))
 
 #################################
 # AVERAGE SUITABILITY OVER TIME #
@@ -436,13 +444,13 @@ for (i in seq_len(nrow(runs))) {
   runname <- paste(
     target_region,
     future_scenario,
-    "20260517",
+    "20261110",
     #format(Sys.time(), "%Y%m%d"),
     sep = "_"
   )
   
   input_folder <- file.path(
-    "E:/metaRange_May26", 
+    "E:/metaRange_May26/outputs/checkup_fullModellingArea", 
     runname, "Inputs")
   
   
@@ -510,16 +518,16 @@ for (dir in inputFolder_paths) {
           strip.text = element_text(face = "italic")) +
     labs(x = "Year", y = "Mean suitability", title = paste("Average suitability –", folder_name))
   
-  print(p)
+  #print(p)
   n_species <- length(unique(folder_df$species))
   ncol <- 3
   nrow <- ceiling(n_species / ncol)
   
-  #ggsave(filename = paste0(folder_name, "_suitabilityOverTime.png"),
-   #      path = diagnostics_dir,
-    #     plot = p, width = 12,
-     #    height = nrow * 3,
-      #   dpi = 300)
+  ggsave(filename = paste0(folder_name, "_suitabilityOverTime.png"),
+       path = diagnostics_dir,
+      plot = p, width = 12,
+     height = nrow * 3,
+    dpi = 300)
   invisible(gc())
 }
 
