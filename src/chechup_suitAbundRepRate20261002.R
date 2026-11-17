@@ -60,13 +60,13 @@ for (i in seq_len(nrow(runs))) {
   runname <- paste(
     target_region,
     future_scenario,
-    "20261103",
+    "20261110",
     sep = "_"
   )
   
-  input_folder <- file.path("E:/metaRange_May26/outputs/checkup_newDispersal", runname, "Inputs")
+  input_folder <- file.path("E:/metaRange_May26/outputs/checkup_fullModellingArea", runname, "Inputs")
   
-  output_folder <- file.path("E:/metaRange_May26/outputs/checkup_newDispersal", runname, "Outputs")
+  output_folder <- file.path("E:/metaRange_May26/outputs/checkup_fullModellingArea", runname, "Outputs")
   
   if (!file.exists(input_folder)) {
     
@@ -88,7 +88,7 @@ invisible(gc())
 # treshold from which we consider cells as suitable
 threshold <- 0.6
 
-selected_sps <- "Felis chaus"
+#selected_sps <- "Felis chaus"
 
 # go through folders to find correct rasters
 for (dir in inputFolder_paths) {
@@ -173,21 +173,26 @@ for (dir in inputFolder_paths) {
     # STEP 2.1 # Crop first layer by the IUCN range (just like the burnin in metaRange)
     ############
     
-    species_range <- iucn[
-      iucn$sci_name == species_name,
-    ]
+    species_range <- iucn[iucn$sci_name == species_name, ]
+    region <- str_split(runname, "_")[[1]]
+    continent_sf <- load_select_continents(region[1])
     
     if (nrow(species_range) == 0) {
-      
       warning("No IUCN range found for: ", species_name)
       next
     }
     
-    # Project IUCN range to suitability CRS
-    species_range <- project(species_range, crs(r1))
-    # Crop + mask suitability
-    r1 <- crop(r1, species_range)
-    r1 <- mask(r1, species_range)
+    # Project geometries to suitability raster CRS
+    species_range <- terra::project(species_range, terra::crs(r1))
+    continent_sf <- sf::st_transform(continent_sf, terra::crs(r1))
+    
+    # 1. Crop and mask by continent
+    r1 <- terra::crop(r1, terra::vect(continent_sf))
+    r1 <- terra::mask(r1, terra::vect(continent_sf))
+    
+    # 2. Crop and mask by species range
+    r1 <- terra::crop(r1, species_range)
+    r1 <- terra::mask(r1, species_range)
     
     
     # STEP 3 # Find outputs folders to retrieve abundance and repRate
@@ -227,18 +232,18 @@ for (dir in inputFolder_paths) {
     }
     # keep only selected timesteps
     abundance_025 <- abundance_files[
-      grepl(paste0("^2_.*_Mammals001_", species_name, "_abundance\\.tif$"),
+      grepl(paste0("^1_.*_Mammals001_", species_name, "_abundance\\.tif$"),
         basename(abundance_files))
     ]
     
     abundance_026 <- abundance_files[
-      grepl(paste0("^2_.*_Mammals002_", species_name, "_abundance\\.tif$"),
+      grepl(paste0("^1_.*_Mammals002_", species_name, "_abundance\\.tif$"),
         basename(abundance_files))
     ]
     
     
     abundance_300 <- abundance_files[
-      grepl(paste0("^2_.*_Mammals300_", species_name, "_abundance\\.tif$"),
+      grepl(paste0("^1_.*_Mammals300_", species_name, "_abundance\\.tif$"),
             basename(abundance_files))
     ]
     
@@ -289,17 +294,17 @@ for (dir in inputFolder_paths) {
     
 
     reproduction_025 <- reproduction_files[
-      grepl(paste0("^2_.*_Mammals001_", species_name, "_reproductionRate\\.tif$"),
+      grepl(paste0("^1_.*_Mammals001_", species_name, "_reproductionRate\\.tif$"),
         basename(reproduction_files))
     ]
     
     reproduction_026 <- reproduction_files[
-      grepl(paste0("^2_.*_Mammals002_", species_name, "_reproductionRate\\.tif$"),
+      grepl(paste0("^1_.*_Mammals002_", species_name, "_reproductionRate\\.tif$"),
         basename(reproduction_files))
     ]
     
     reproduction_300 <- reproduction_files[
-      grepl(paste0("^2_.*_Mammals300_", species_name, "_reproductionRate\\.tif$"),
+      grepl(paste0("^1_.*_Mammals300_", species_name, "_reproductionRate\\.tif$"),
             basename(reproduction_files))
     ]
     
@@ -458,7 +463,7 @@ for (dir in inputFolder_paths) {
     # print or save
     print(p)
     
-    output_plot_dir <- file.path("E:/metaRange_May26/outputs/checkup_newDispersal/diagnostics")
+    output_plot_dir <- file.path("E:/metaRange_May26/outputs/checkup_fullModellingArea/diagnostics")
     
     ggsave(filename = file.path(output_plot_dir, paste0("SuitAbundRepRate2_",species_label, runname, ".png")),
       plot = p,
@@ -508,11 +513,11 @@ selected_sps <- c(
 )
 
 inputFolder_paths <- list.dirs(
-  "E:/metaRange_May26/outputs/checkup_newDispersal",
+  "E:/metaRange_May26/outputs/checkup_fullModellingArea",
   recursive = FALSE
 )
 
-output_plot_dir <- "E:/metaRange_May26/outputs/checkup_newDispersal/diagnostics"
+output_plot_dir <- "E:/metaRange_May26/outputs/checkup_fullModellingArea/diagnostics"
 
 for (dir in inputFolder_paths) {
   
