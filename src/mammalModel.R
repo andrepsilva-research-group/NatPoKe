@@ -159,20 +159,20 @@ for (replicateN in 1:n_replicates) {
     abundance_70[-selected_cells] <- 0
     
     # Original species-specific dispersal parameters
-    dispersal_distance <- as.numeric(species_traits[["dispersalDistance"]][i])
+    dispersal_distance <- 3# as.numeric(species_traits[["dispersalDistance"]][i])
     
-    dispersal_max_distance <- as.numeric(species_traits[["dispersalMaxDistance"]][i])
+    dispersal_max_distance <- 13 #as.numeric(species_traits[["dispersalMaxDistance"]][i])
     
     # Decide the number of dispersal events per year
-    if (dispersal_distance / 12 < 1) {
+    if (dispersal_max_distance / 12 < 1) {
       n_iterations <- 1L } else {
       n_iterations <- 12L
       }
     
     # Scale distances according to the number of events
-    step_mean_distance <- dispersal_distance / sqrt(n_iterations)
-    step_max_distance <- dispersal_max_distance / sqrt(n_iterations)
-    step_max_radius <- max(1L, ceiling(step_max_distance))
+    step_mean_distance <- max(dispersal_distance / n_iterations, 1)
+    step_max_distance <- max(dispersal_max_distance / n_iterations, 2)
+    step_max_radius <- max(2L, ceiling(step_max_distance))
     
     # traits that need to be stored at the population level
     sim$add_traits(
