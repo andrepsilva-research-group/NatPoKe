@@ -1,10 +1,9 @@
 ## Name: Creating SDM-based environmental layer ##
 ## Author: Inês Silva & Sarina Lincoln ##
-## Date: December 27th 2025 ## Updated on March 27th 2026
+## Date: December 27th 2025 ## Updated on November 17th 2026
 ## Description: Use SDMs for 2015, 2030, 2050 and 2100 (.tif outputs), to build
 ## stacks serving as environmental layers for the metaRange model for multiple
 ## species and future scenarios (SSP1-2.6 and SSP5-8.5)##
-
 
 source("./src/libraries.R")
 source("./src/customFunctions2.R")
@@ -76,11 +75,13 @@ for (sp in target_species) {
   interpolated_raster[[15]] <- rast(future_files[[1]]) # 2030
   interpolated_raster[[35]] <- rast(future_files[[2]]) # 2050
   interpolated_raster[[85]] <- rast(future_files[[3]]) # 2100
+  invisible(gc())
   
   message("Interpolating raster layers across years")
   
   # do linear interpolation between them
   r_interp <- approximate(interpolated_raster, method = "linear")
+  invisible(gc())
   # find last non-NA layer (2100)
   last_known <- max(which(!is.na(global(interpolated_raster, "sum", na.rm=TRUE)[,1])))
   # fill remaining layers by repeating the last SDM scenario
@@ -145,12 +146,13 @@ for (sp in target_species) {
   
   # cleanup
   rm(raster_file, #biome_sf, 
-     continent_sf, target_geom, sp_raster, output_path)
+     continent_sf, #target_geom,
+     sp_raster, output_path)
   invisible(gc())
 }
 
 ##########
-# STEP 4 # Reprojected Rasters & save output
+# STEP 4 # Mask for reachable areas, aggregate resolution and reproject rasters
 ##########
 
 # list all cropped rasters
@@ -158,58 +160,51 @@ landscapes <- list.files(path = dirinput,
                          pattern = ".*_cropped\\.tif$",
                          full.names = TRUE)
 invisible(gc())
+
+# load iucn's species ranges 
+iucn <- vect("./data/externaldata/MAMMALS_TERRESTRIAL_ONLY/MAMMALS_TERRESTRIAL_ONLY.shp")
+iucn$sci_name <- gsub(" ", ".", iucn$sci_name)
+invisible(gc())
+
+# select target species
+species_traits <- read.csv(file.path(dirinput,"metaRangeSpeciesDataframe.csv"))
+
 message("Start Reprojecting to Robinson...")
 
 for (landscape in landscapes) {
   message("Processing: ", basename(landscape))
-  
   ## WARNINGS may appear in the end!! It might be ok, but still check
   ## GDAL couldn’t compute the outer bounds reliably when using the Robinson projection system
+  
+  # extract species name from filename
+  species_name <- gsub("_.*", "", file_path_sans_ext(basename(landscape)))
+  
+  # get species range 
+  sps_range <- iucn[iucn$sci_name == species_name,]
+  invisible(gc())
   
   # load raster stack
   r <- terra::rast(landscape)
   #plot(r)
   
-  # Reproject to target CRS
+  # reproject to target CRS
   r_utm <- terra::project(r, targetRegionCRS)
   
-  # crop and mask - to ensure no dead pixels in the corners
+  # create reachable areas mask custom function
+  reachableArea_mask <- make_reachableAreas_mask(land_rast = r_utm,
+                                                  iucn_range = sps_range,
+                                                  directions = 8)
   
-  # load biome and continent geometries
-  #biome_sf <- load_biome(biome_name = target_biome)
-  continent_sf <- load_select_continents(continent_names = target_region)
-  # crop biome to continents
-  sf_use_s2(FALSE)
-  #target_geom <- crop_biome_to_continent(biome_sf, continent_sf)
-  # project target region to ronbinson
-  target_geom_robinson <- st_transform(continent_sf, crs = targetRegionCRS)
+  # CROP and MASK raster by reachable areas
+  r_utm_masked <- terra::crop(r_utm, reachableArea_mask)
+  r_utm_masked <- terra::mask(r_utm_masked, reachableArea_mask,  maskvalues = 0)
   invisible(gc())
-  
-  # CROP and MASK raster
-  r_utm_masked <- terra::crop(r_utm, target_geom_robinson)
-  r_utm_masked <- terra::mask(r_utm_masked, target_geom_robinson)
-  invisible(gc(rm(biome_sf, continent_sf, target_geom, target_geom_robinson)))
-  
-  # convert to rasterStack (note: here we changed packages because terra was removing the rasters' values when changing the crs)
-  r_raster <- raster::stack(r_utm_masked)
-  
-  # get original CRS
-  orig_crs <- crs(r_utm_masked)
-  
-  # rescale extent (divide by 1000 to convert meters to kilometers)
-  #extent(r_raster) <- extent(r_raster) / 1000
-  
-  # extract species name from filename
-  species_name <- gsub("_.*", "", file_path_sans_ext(basename(landscape)))
-  
-  # select target species
-  species_traits <- read.csv(file.path(dirinput,"metaRangeSpeciesDataframe.csv"))
   
   # get an aggregation factor from species traits
   species_fact <- ceiling(species_traits$ModellingRes[species_traits$Species == species_name] / species_traits$CellResolution[species_traits$Species == species_name])
   
   # aggregate raster using terra
-  r_agg <- aggregate(r_utm, fact = species_fact, fun = mean, na.rm = TRUE)
+  r_agg <- aggregate(r_utm_masked, fact = species_fact, fun = mean, na.rm = TRUE)
   
   # build an output filename
   output_filename <- gsub("\\.tif$", "_reprojectedm.tif", landscape)
@@ -220,6 +215,7 @@ for (landscape in landscapes) {
   # clean memory & save space
   #rm(r, r_utm, r_agg)
   gc()
+  
 }
 
 message("✅ Environmental layers prepared successfully! ")
