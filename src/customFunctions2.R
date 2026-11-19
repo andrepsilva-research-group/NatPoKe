@@ -111,6 +111,57 @@ crop_biome_to_continent <- function(biome, continent_geom) {
   st_intersection(biome, continent_geom)
 }
 
+
+# Reachable Areas function
+# creates the modelling area to be used in MetaRange as the environment based on
+# the land area connected to the current IUCN range (effectively removes unreachable islands, assumption)
+
+make_reachableAreas_mask <- function(land_rast, iucn_range, directions = 4) {
+  
+  # Check that both inputs use the same CRS
+  if (!terra::same.crs(land_rast, iucn_range)) {
+    iucn_range <- terra::project(iucn_range, terra::crs(land_rast))
+  }
+  
+  # Step 1 # Create a binary land raster
+  ## Land = 1; water = NA
+  land_binary <- terra::ifel(!is.na(land_rast[[1]]) & land_rast[[1]] > 0, 1, NA)
+  
+  # Step 2 # Identify connected land patches
+  land_patches <- terra::patches(land_binary,
+                                 directions = 4)
+  
+  # Step 3 # Identify reachable areas
+  # rasterise the current IUCN range
+  range_rast <- terra::rasterize(iucn_range,
+                                 land_patches,
+                                 field = 1, background = NA, touches = TRUE)
+  
+  # identify land patches intersecting the IUCN range
+  range_patches <- terra::mask(land_patches, range_rast)
+  
+  accessible_patch_ids <- unique(terra::values(range_patches, mat = FALSE))
+  accessible_patch_ids <- accessible_patch_ids[!is.na(accessible_patch_ids)]
+  
+  # Stop if the IUCN range does not overlap any land cells
+  if (length(accessible_patch_ids) == 0) {
+    stop("IUCN range does not intersect the land raster.")
+  }
+  
+  # keep only land patches connected to the current range
+  accessibility_mask <- terra::subst(land_patches,
+                                     from = accessible_patch_ids,
+                                     to = rep(1, length(accessible_patch_ids)),
+                                     others = 0)
+  
+  # convert ocean and other NA cells to zero
+  accessibility_mask <- terra::ifel(is.na(land_patches), 0, accessibility_mask)
+  
+  names(accessibility_mask) <- "accessibility"
+  
+  return(accessibility_mask)
+}
+
 ##############################
 # Climate realated Functions # **NOT REVISED BY MIS**
 ##############################
