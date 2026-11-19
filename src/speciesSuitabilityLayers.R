@@ -133,7 +133,7 @@ for (sp in target_species) {
   
   # CROP and MASK raster
   sp_raster <- terra::crop(sp_raster, continent_sf)
-  #sp_raster <- terra::mask(sp_raster, target_geom)
+  #sp_raster <- terra::mask(sp_raster, continent_sf)
   invisible(gc())
   
   # output filename
