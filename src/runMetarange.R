@@ -26,7 +26,7 @@ biome_paths <- list(
 processedSDM_dir <- "E:/metaRange_May26/data/sdm/processedSDMs" #"E:/NatPoKe_SDMs/processedSDMs"
 
 # output root (all runs live here)
-output_root <- "E:/metaRange_May26/outputs"
+output_root <- "E:/metaRange_May26/outputs/checkup_reachableAreas"#"E:/metaRange_May26/outputs"
 
 terra::terraOptions(
   # define new temporary folder
@@ -40,7 +40,7 @@ terra::terraOptions(
 # STEP 2 # Read runs table
 ##########
 
-runs <- read.csv("data/run_table.csv", stringsAsFactors = FALSE)
+runs <- read.csv("data/run_table_longBurnIn.csv", stringsAsFactors = FALSE)
 #TNIND_paths <- list()
 
 for (i in seq_len(nrow(runs))) {
@@ -53,7 +53,7 @@ for (i in seq_len(nrow(runs))) {
   runname <- paste(
     target_region,
     future_scenario,
-    "20260517",
+    "20261118",
     #format(Sys.time(), "%Y%m%d"),
     sep = "_"
   )
@@ -77,7 +77,7 @@ for (i in seq_len(nrow(runs))) {
     # Load species list
     # --------------------------------------------------------
     species_table <- read.csv(
-      file.path(data_dir, "species_by_region.csv"),
+      file.path(data_dir, "species_by_region_longBurnIn.csv"),
       stringsAsFactors = FALSE
     )
     
