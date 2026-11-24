@@ -192,7 +192,7 @@ for (target_biome in biomes) {
     unique()
   
   #testing
-  target_species <- c("Ateles.belzebuth", "Lycalopex.griseus", "Puma.concolor")
+  #target_species <- c("Ateles.belzebuth", "Lycalopex.griseus", "Puma.concolor")
   #sp <- target_species[[1]]  
   
   SDM_NatPoke <- lapply(target_species, function(sp) {
