@@ -60,13 +60,13 @@ for (i in seq_len(nrow(runs))) {
   runname <- paste(
     target_region,
     future_scenario,
-    "20261110",
+    "20261118",
     sep = "_"
   )
   
-  input_folder <- file.path("E:/metaRange_May26/outputs/checkup_fullModellingArea", runname, "Inputs")
+  input_folder <- file.path("E:/metaRange_May26/outputs/checkup_reachableAreas", runname, "Inputs")
   
-  output_folder <- file.path("E:/metaRange_May26/outputs/checkup_fullModellingArea", runname, "Outputs")
+  output_folder <- file.path("E:/metaRange_May26/outputs/checkup_reachableAreas", runname, "Outputs")
   
   if (!file.exists(input_folder)) {
     
@@ -85,10 +85,6 @@ iucn$sci_name <- gsub(" ", ".", iucn$sci_name)
 invisible(gc())
 
 
-# treshold from which we consider cells as suitable
-threshold <- 0.6
-
-#selected_sps <- "Felis chaus"
 
 # go through folders to find correct rasters
 for (dir in inputFolder_paths) {
@@ -185,6 +181,12 @@ for (dir in inputFolder_paths) {
     # Project geometries to suitability raster CRS
     species_range <- terra::project(species_range, terra::crs(r1))
     continent_sf <- sf::st_transform(continent_sf, terra::crs(r1))
+    
+    # Get continent plotting extent
+    continent_bbox <- sf::st_bbox(continent_sf)
+    
+    xlim_continent <- c(continent_bbox["xmin"], continent_bbox["xmax"])
+    ylim_continent <- c(continent_bbox["ymin"], continent_bbox["ymax"])
     
     # 1. Crop and mask by continent
     r1 <- terra::crop(r1, terra::vect(continent_sf))
@@ -449,7 +451,9 @@ for (dir in inputFolder_paths) {
       scale_fill_viridis_c(option = "viridis", na.value = "transparent", name = "Reproduction rate",
                            guide = guide_colourbar(order = 3)) +
       facet_grid(type ~ timestep) +
-      coord_equal(expand = FALSE) +
+      coord_equal(xlim = xlim_continent,
+                  ylim = ylim_continent, 
+                  expand = FALSE) +
       theme_bw() +
       theme(
         axis.title = element_blank(),
@@ -463,9 +467,9 @@ for (dir in inputFolder_paths) {
     # print or save
     print(p)
     
-    output_plot_dir <- file.path("E:/metaRange_May26/outputs/checkup_fullModellingArea/diagnostics")
+    output_plot_dir <- file.path("E:/metaRange_May26/outputs/checkup_reachableAreas/diagnostics")
     
-    ggsave(filename = file.path(output_plot_dir, paste0("SuitAbundRepRate2_",species_label, runname, ".png")),
+    ggsave(filename = file.path(output_plot_dir, paste0("SuitAbundRepRate_",species_label, runname, ".png")),
       plot = p,
       bg = "white",
       width = ifelse(grepl("Europe\\+Asia|North America", runname, ignore.case = TRUE), 300, 210),
@@ -513,26 +517,26 @@ selected_sps <- c(
 )
 
 inputFolder_paths <- list.dirs(
-  "E:/metaRange_May26/outputs/checkup_fullModellingArea",
+  "E:/metaRange_May26/outputs/checkup_reachableAreas",
   recursive = FALSE
 )
 
-output_plot_dir <- "E:/metaRange_May26/outputs/checkup_fullModellingArea/diagnostics"
+output_plot_dir <- "E:/metaRange_May26/outputs/checkup_reachableAreas/diagnostics"
 
-for (dir in inputFolder_paths) {
+for (dir in outputFolder_paths) {
   
   runname <- basename(dir)
   
-  output_dir <- file.path(dir, "Outputs")
+  #output_dir <- file.path(dir, "Outputs")
   
-  if (!dir.exists(output_dir)) next
+  if (!dir.exists(dir)) next
   
   # -----------------------------------------------------
   # FIND ALL ABUNDANCE RASTERS
   # -----------------------------------------------------
   
   abundance_files <- list.files(
-    output_dir,
+    dir,
     pattern = "_abundance\\.tif$",
     full.names = TRUE
   )
@@ -729,189 +733,91 @@ for (dir in inputFolder_paths) {
 ### DISPERSAL CHANGES ###
 #########################
 
-for (dir in inputFolder_paths) {
+for (dir in outputFolder_paths) {
   
   runname <- basename(dir)
   
-  output_dir <- file.path(dir, "Outputs")
+  #output_dir <- file.path(dir, "Outputs")
   
-  if (!dir.exists(output_dir)) next
+  if (!dir.exists(dir)) next
   
-  # -----------------------------------------------------
-  # FIND ALL ABUNDANCE RASTERS
-  # -----------------------------------------------------
+  # Step 1 # Find all dispersal change rasters
   
-  dispersal_files <- list.files(output_dir, pattern = "_dispersalChange\\.tif$", full.names = TRUE)
+  dispersal_files <- list.files(dir, pattern = "_dispersalChange\\.tif$", full.names = TRUE)
   
   if (length(dispersal_files) == 0) next
   
-  # -----------------------------------------------------
-  # LOOP THROUGH SPECIES
-  # -----------------------------------------------------
-  
+  # go through all species
   for (species_name in selected_sps) {
     
     species_file <- gsub(" ", ".", species_name)
-    
-    # ---------------------------------------------------
-    # FIND DISPERSAL CHANGES FILES FOR TIMESTEPS 001–300
-    # ---------------------------------------------------
-    
-    species_dispersal <- dispersal_files[
-      grepl(
-        paste0(
-          "^1_.*_Mammals(001|002|200|300)_",
-          species_file,
-          "_dispersalChange\\.tif$"
-        ),
-        basename(dispersal_files)
-      )
-    ]
+    # select for timesteps 1, 2, 200 and 300
+    species_dispersal <- dispersal_files[grepl(paste0("^1_.*_Mammals(001|002|200|300)_", species_file, "_dispersalChange\\.tif$"), basename(dispersal_files))]
     
     if (length(species_dispersal) == 0) {
-      message(
-        "No abundance files found for ",
-        species_name,
-        " in ",
-        runname
-      )
+      message("No abundance files found for ", species_name, " in ", runname)
       next
     }
     
-    # ---------------------------------------------------
-    # EXTRACT TIMESTEP FROM FILENAME
-    # ---------------------------------------------------
-    
-    timestep <- str_extract(
-      basename(species_dispersal),
-      "Mammals[0-9]{3}"
-    )
-    
+    # get timestep number from file name
+    timestep <- str_extract(basename(species_dispersal), "Mammals[0-9]{3}")
     timestep <- as.numeric(sub("Mammals", "", timestep))
     
-    # ---------------------------------------------------
-    # KEEP TIMESTEP 001, THEN EVERY 12 TIMESTEPS TO 300
-    # Total: 25 panels
-    # ---------------------------------------------------
-    
-    #selected_timesteps <- c(1, seq(12, 300, by = 12))
-    
-    #keep <- timestep %in% selected_timesteps
-    
-    #species_dispersal <- species_dispersal[keep]
-    #timestep <- timestep[keep]
-    
     if (length(species_dispersal) == 0) {
-      message(
-        "No selected timesteps found for ",
-        species_name,
-        " in ",
-        runname
-      )
+      message("No selected timesteps found for ", species_name, " in ", runname)
       next
     }
     
-    # ---------------------------------------------------
-    # ORDER CORRECTLY
-    # ---------------------------------------------------
-    
+    # order timesteps correctly
     ord <- order(timestep)
-    
     species_dispersal <- species_dispersal[ord]
     timestep <- timestep[ord]
     
-    # ---------------------------------------------------
-    # LOAD AND CONVERT RASTERS
-    # ---------------------------------------------------
+    # load and convert rasters to df
     
     dispersal_df <- list()
     
     for (i in seq_along(species_dispersal)) {
-      
       r <- rast(species_dispersal[i])
       
       if (nlyr(r) > 1) {
         r <- r[[1]]
       }
       
-      df <- as.data.frame(
-        r,
-        xy = TRUE,
-        na.rm = TRUE
-      )
-      
+      df <- as.data.frame(r, xy = TRUE,na.rm = TRUE)
       names(df)[3] <- "value"
-      
       df$timestep <- sprintf("%03d", timestep[i])
-      
       dispersal_df[[i]] <- df
     }
     
     dispersal_df <- bind_rows(dispersal_df)
     
-    # ---------------------------------------------------
-    # MAKE TIMESTEP A FACTOR IN CORRECT ORDER
-    # ---------------------------------------------------
+    # plot dispersal chnage in one row
     
-    # dispersal_df$timestep <- factor(
-    #   dispersal_df$timestep,
-    #   levels = sprintf("%03d", selected_timesteps)
-    # )
-    
-    # ---------------------------------------------------
-    # PLOT: 25 PANELS, 5 × 5 GRID
-    # ---------------------------------------------------
-    
-    p <- ggplot(
-      dispersal_df,
-      aes(x = x, y = y, fill = value)
-    ) +
+    p <- ggplot(dispersal_df, aes(x = x, y = y, fill = value)) +
       geom_raster() +
-      scale_fill_viridis_c(
-        name = "Abundance",
-        option = "viridis",
-        na.value = "transparent"
-      ) +
-      facet_wrap(
-        ~ timestep,
-        ncol = 4,
-        drop = FALSE
-      ) +
+      scale_fill_viridis_c(name = "Abundance", option = "viridis", na.value = "transparent") +
+      facet_wrap(~ timestep,ncol = 4, drop = FALSE) +
       coord_equal() +
-      labs(
-        title = species_name,
-        x = NULL,
-        y = NULL
-      ) +
+      labs(title = species_name, x = NULL, y = NULL) +
       theme_minimal() +
-      theme(
-        axis.text = element_blank(),
-        axis.ticks = element_blank(),
-        panel.grid = element_blank(),
-        strip.text = element_text(face = "bold"),
-        plot.title = element_text(face = "bold"),
-        legend.position = "right"
-      )
-    p
+      theme(axis.text = element_blank(),
+            axis.ticks = element_blank(),
+            panel.grid = element_blank(),
+            strip.text = element_text(face = "bold"),
+            plot.title = element_text(face = "bold"),
+            legend.position = "right")
     
-    # ---------------------------------------------------
-    # SAVE FIGURE
-    # ---------------------------------------------------
-    
+    # save figure per species
     safe_species <- gsub(" ", "_", species_name)
     
-    output_file <- file.path(
-      output_plot_dir,
-      paste0(
-        "DispersalChangeEvolution_",
-        runname,
-        "_",
-        safe_species,
-        "_001_300.png"
-      )
-    )
+    output_file <- file.path(output_plot_dir,
+                             paste0("DispersalChangeEvolution_", runname, "_", safe_species, "_abundance_001_300.png"))
     
-    ggsave(output_file, p, width = 12, height = ifelse(grepl("Europe\\+Asia|North America", runname, ignore.case = TRUE), 2, 4), dpi = 300, bg = "white")
+    ggsave(output_file, p,
+           width = 12, height = ifelse(grepl("Europe\\+Asia|North America", runname, ignore.case = TRUE), 8, 12),
+           dpi = 300, bg = "white")
+
     gc()
     message("Saved: ", output_file)
   }
