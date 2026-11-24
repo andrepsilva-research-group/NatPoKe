@@ -158,12 +158,10 @@ for (replicateN in 1:n_replicates) {
     abundance_70 <- initial_abundance
     abundance_70[-selected_cells] <- 0
     
-    # Original species-specific dispersal parameters
-    dispersal_distance <- 3# as.numeric(species_traits[["dispersalDistance"]][i])
-    
-    dispersal_max_distance <- 13 #as.numeric(species_traits[["dispersalMaxDistance"]][i])
-    
     # Decide the number of dispersal events per year
+    dispersal_max_distance <- species_traits[["dispersalMaxDistance"]][i]
+    dispersal_distance <- species_traits[["dispersalDistance"]][i]
+    
     if (dispersal_max_distance / 12 < 1) {
       n_iterations <- 1L } else {
       n_iterations <- 12L
