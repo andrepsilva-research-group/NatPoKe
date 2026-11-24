@@ -76,6 +76,58 @@ selected_sps <- c(
   "Canis lupus"
 )
 
+
+
+# Load Natural Earth countries
+world_sf <- rnaturalearth::ne_countries(
+  scale = "medium",
+  returnclass = "sf"
+)
+
+# Function to retrieve the geographical region from the run name
+get_region_map <- function(runname, raster_crs) {
+  
+  # Extract region from run name
+  region_name <- strsplit(runname, "_")[[1]][1]
+  
+  # Match run names to Natural Earth continent names
+  continents <- switch(
+    region_name,
+    "Africa" = "Africa",
+    "Asia" = "Asia",
+    "SouthAmerica" = "South America",
+    "South America" = "South America",
+    "NorthAmerica" = "North America",
+    "North America" = "North America",
+    "Europe+Asia" = c("Europe", "Asia"),
+    NULL
+  )
+  
+  if (is.null(continents)) {
+    warning("Unknown region in runname: ", runname)
+    return(NULL)
+  }
+  
+  # Select countries belonging to the region
+  region_sf <- world_sf %>%
+    filter(continent %in% continents)
+  
+  # Dissolve countries into one regional polygon
+  region_sf <- sf::st_sf(
+    region = region_name,
+    geometry = sf::st_union(sf::st_geometry(region_sf))
+  )
+  
+  # Transform to raster CRS
+  region_sf <- sf::st_transform(
+    region_sf,
+    crs = raster_crs
+  )
+  
+  return(region_sf)
+}
+
+
 ################
 # FULL DATASET # 
 ################
@@ -687,34 +739,6 @@ for (dir in inputFolder_paths) {
     
     # Extract species name
     fname <- basename(f)
-    species_name <- str_extract(fname, "^(.*?)_(?=(boreal|tropical))")
-    species_name <- gsub("_$", "", species_name)
-    species_label <- suppressMessages(pretty_species_names(species_name))
-    
-    message("")
-    message("Processing: ", species_label, " | ", runname)
-    # Load suitability rasters
-    r <- rast(f)
-    
-    message("Suitability layers: ", nlyr(r))
-    if (max(timestep_1, timestep_2) > nlyr(r)) {
-      warning(species_label,
-              ": requested timestep exceeds number of suitability raster layers.")
-      next
-    }
-    
-    # Extract correct suitability timesteps
-    r1 <- r[[timestep_1]]
-    r2 <- r[[timestep_1]]
-    r300 <- r[[timestep_1]] # these need to be layer numbers and not the timesteps!!! timestep 100 is still layer 1 
-    
-    
-    names(r1) <- paste0("Timestep ", timestep_1)
-    names(r2) <- paste0("Timestep ", timestep_2)
-    names(r300) <- paste0("Timestep ", timestep_300)
-    
-    # Extract species name
-    fname <- basename(f)
     
     species_name <- str_extract(fname, "^(.*?)_(?=(boreal|tropical))")
     
@@ -954,8 +978,13 @@ for (dir in inputFolder_paths) {
     df$timestep <- factor(df$timestep,
                           levels = c("Timestep 1", "Timestep 2", "Timestep 300"))
     
+    # Get geographical background from run name
+    region_map <- get_region_map(runname, terra::crs(r1))
+    
     
     p <- ggplot() +
+      # GEOGRAPHICAL BACKGROUND
+      geom_sf(data = region_map, fill = "grey95", color = "grey70", linewidth = 0.25) +
       # SUITABILITY
       geom_raster(data = df[df$type == "Suitability", ], 
                   aes(x = x, y = y, fill = value))+
@@ -972,7 +1001,7 @@ for (dir in inputFolder_paths) {
       scale_fill_viridis_c(option = "viridis", na.value = "transparent", name = "Reproduction rate",
                            guide = guide_colourbar(order = 3)) +
       facet_grid(type ~ timestep) +
-      coord_equal(expand = FALSE) +
+      #coord_equal(expand = FALSE) +
       theme_bw() +
       theme(
         axis.title = element_blank(),
@@ -984,7 +1013,7 @@ for (dir in inputFolder_paths) {
       labs(title = species_label)
     
     # print or save
-    #print(p)
+    print(p)
     
     output_plot_dir <- diagnostics_dir
     
@@ -1074,6 +1103,8 @@ for (i in seq_len(nrow(run_paths))) {
       
       abundance_df[[j]] <- df
     }
+    # Geographical background
+    #region_map <- get_region_map(runname, terra::crs(r))
     
     abundance_df <- bind_rows(abundance_df)
     
