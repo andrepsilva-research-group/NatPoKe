@@ -133,7 +133,7 @@ for (sp in target_species) {
   
   # CROP and MASK raster
   sp_raster <- terra::crop(sp_raster, continent_sf)
-  #sp_raster <- terra::mask(sp_raster, continent_sf)
+  sp_raster <- terra::mask(sp_raster, continent_sf)
   invisible(gc())
   
   # output filename
@@ -164,6 +164,10 @@ invisible(gc())
 # load iucn's species ranges 
 iucn <- vect("./data/externaldata/MAMMALS_TERRESTRIAL_ONLY/MAMMALS_TERRESTRIAL_ONLY.shp")
 iucn$sci_name <- gsub(" ", ".", iucn$sci_name)
+# Remove empty geometries
+iucn <- iucn[!is.empty(iucn), ]
+# Keep only extant distribution areas
+iucn <- iucn[iucn$presence %in% c(1,3),]
 invisible(gc())
 
 # select target species
@@ -197,7 +201,7 @@ for (landscape in landscapes) {
   
   # CROP and MASK raster by reachable areas
   r_utm_masked <- terra::crop(r_utm, reachableArea_mask)
-  r_utm_masked <- terra::mask(r_utm_masked, reachableArea_mask,  maskvalues = 0)
+  r_utm_masked <- terra::mask(r_utm_masked, reachableArea_mask, maskvalues = 0)
   invisible(gc())
   
   # get an aggregation factor from species traits
