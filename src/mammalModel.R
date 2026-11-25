@@ -67,7 +67,7 @@ n_replicates <- 3 # total nº of replicates
 all_reps_list <- list() # list to save the .csv
 
 # burn-in
-burnin_t <- 300 # nº of years the model should consider
+burnin_t <- 350 # nº of years the model should consider
 
 # global setup options
 set_verbosity(2L) # 0L = silent, 1L = progress updates, 2L =  debug
@@ -81,6 +81,10 @@ set.seed(1) # reproducibility
 # load iucn's species ranges (to initiate species only within their range)
 iucn <- vect("./data/externaldata/MAMMALS_TERRESTRIAL_ONLY/MAMMALS_TERRESTRIAL_ONLY.shp")
 iucn$sci_name <- gsub(" ", ".", iucn$sci_name)
+# Remove empty geometries
+iucn <- iucn[!is.empty(iucn), ]
+# Keep only extant distribution areas
+iucn <- iucn[iucn$presence %in% c(1,3),]
 invisible(gc())
 
 for (replicateN in 1:n_replicates) {
@@ -139,7 +143,7 @@ for (replicateN in 1:n_replicates) {
     iucn_sps <- iucn[iucn$sci_name == species_traits$Species[i]]
     iucn_sps <- project(iucn_sps, crs(sim_env[[i]]))
     #plot(iucn_sps)
-    range_raster <- rasterize(iucn_sps, sim_env[[i]], values = 1)
+    range_raster <- rasterize(iucn_sps, sim_env[[i]])
     range_raster <- terra::subst(range_raster, NA, 0)
     
     # Calculate initial abundance
@@ -149,7 +153,7 @@ for (replicateN in 1:n_replicates) {
     )
     
     # Randomly select 70% of cells
-    valid_cells <- which(!is.na(initial_abundance))
+    valid_cells <- which(initial_abundance > 0)
     n_selected <- round(length(valid_cells) * 0.70)
     
     selected_cells <- sample(valid_cells, n_selected)
