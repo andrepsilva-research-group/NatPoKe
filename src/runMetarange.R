@@ -7,6 +7,7 @@
 # STEP 1 # Load libraries and custom functions
 ##########
 
+start <- Sys.time()
 source(file.path("src", "libraries.R"))
 source(file.path("src", "customFunctions2.R"))
 
@@ -26,7 +27,7 @@ biome_paths <- list(
 processedSDM_dir <- "E:/metaRange_May26/data/sdm/processedSDMs" #"E:/NatPoKe_SDMs/processedSDMs"
 
 # output root (all runs live here)
-output_root <- "E:/metaRange_May26/outputs/checkup_reachableAreas"#"E:/metaRange_May26/outputs"
+output_root <- "E:/metaRange_May26/outputs"#"E:/metaRange_May26/outputs"
 
 terra::terraOptions(
   # define new temporary folder
@@ -40,7 +41,7 @@ terra::terraOptions(
 # STEP 2 # Read runs table
 ##########
 
-runs <- read.csv("data/run_table_longBurnIn.csv", stringsAsFactors = FALSE)
+runs <- read.csv("data/run_table.csv", stringsAsFactors = FALSE)
 #TNIND_paths <- list()
 
 for (i in seq_len(nrow(runs))) {
@@ -53,7 +54,7 @@ for (i in seq_len(nrow(runs))) {
   runname <- paste(
     target_region,
     future_scenario,
-    "20261118",
+    "20261125",
     #format(Sys.time(), "%Y%m%d"),
     sep = "_"
   )
@@ -77,7 +78,7 @@ for (i in seq_len(nrow(runs))) {
     # Load species list
     # --------------------------------------------------------
     species_table <- read.csv(
-      file.path(data_dir, "species_by_region_longBurnIn.csv"),
+      file.path(data_dir, "species_by_region.csv"),
       stringsAsFactors = FALSE
     )
     
@@ -142,6 +143,9 @@ for (i in seq_len(nrow(runs))) {
 message("=====================")
 message("= All runs finished =")
 message("=====================")
+
+end <- Sys.time()
+start-end
 
 ##########
 # STEP 3 # Diganostics & basic validation outputs
