@@ -21,10 +21,10 @@ src_dir       <- file.path(project_dir, "src")
 data_dir      <- file.path(project_dir, "data")
 external_dir  <- file.path(data_dir, "externaldata")
 
-output_root   <- "E:/metaRange_May26/outputs/checkup_reachableAreas"
-run_date      <- "20261118"
+output_root   <- "E:/metaRange_May26/outputs"
+run_date      <- "20261125"
 
-run_table_file <- file.path(data_dir, "run_table_longBurnIn.csv")
+run_table_file <- file.path(data_dir, "run_table.csv")
 traits_file    <- file.path(external_dir, "mammalTraits_2025-12-11.csv")
 iucn_file      <- file.path(external_dir, "MAMMALS_TERRESTRIAL_ONLY",
                             "MAMMALS_TERRESTRIAL_ONLY.shp")
@@ -49,32 +49,37 @@ run_paths <- runs %>%
   ) %>%
   distinct(runname, .keep_all = TRUE)
 
-selected_sps <- c(
-  # tropical Africa
-  "Loxodonta africana",
-  "Caracal caracal",
-  "Mandrillus sphinx",
-  
-  # tropical South America
-  "Odocoileus virginianus",
-  "Ozotoceros bezoarticus",
-  
-  # boreal North America
-  "Bison bison",
-  "Canis latrans",
-  "Gulo gulo",
-  
-  # boreal Europe + Asia
-  "Panthera tigris", 
-  "Bison bonasus", 
-  "Capreolus pygargus",
-  "Alces alces",
-  
-  # tropical asia
-  "Axis axis",
-  "Felis chaus",
-  "Canis lupus"
-)
+selected_sps <- read.csv(file.path(data_dir, "species_by_region.csv"),
+                         stringsAsFactors = FALSE) %>% 
+  dplyr::pull(sci_name) %>% 
+  unique()
+
+# selected_sps <- c(
+#   # tropical Africa
+#   "Loxodonta africana",
+#   "Caracal caracal",
+#   "Mandrillus sphinx",
+#   
+#   # tropical South America
+#   "Odocoileus virginianus",
+#   "Ozotoceros bezoarticus",
+#   
+#   # boreal North America
+#   "Bison bison",
+#   "Canis latrans",
+#   "Gulo gulo",
+#   
+#   # boreal Europe + Asia
+#   "Panthera tigris", 
+#   "Bison bonasus", 
+#   "Capreolus pygargus",
+#   "Alces alces",
+#   
+#   # tropical asia
+#   "Axis axis",
+#   "Felis chaus",
+#   "Canis lupus"
+# )
 
 
 
