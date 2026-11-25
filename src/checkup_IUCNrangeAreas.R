@@ -91,9 +91,9 @@ names(biome_sf) <- c("Tropical", "Boreal")
 
 biome_area <- lapply(biome_sf, st_transform, crs = robinson_crs)
 
-################################
-# STEP 5: CALCULATE INTERSECTIONS
-################################
+###################################
+# STEP 5: CALCULATE INTERSECTIONS #
+###################################
 
 intersection_results <- list()
 
@@ -103,38 +103,38 @@ for (species in target_species) {
   
   tryCatch({
     
-    # Select species range
+    # select my species range
     species_range <- iucn_sf %>%
       filter(sci_name == species)
     
     if (nrow(species_range) == 0) next
     
-    # Combine species polygons
+    # combine species polygons
     species_range <- st_union(st_geometry(species_range))
     
     species_range <- st_make_valid(species_range)
     
-    # Calculate total range area
+    # calculate total range area
     total_area <- as.numeric(sum(st_area(species_range)) / 1e6)
     
     for (biome_name in names(biome_area)) {
       
       biome_polygon <- st_union(st_geometry(biome_area[[biome_name]]))
       
-      # Default intersection area
+      # if nothing intersection area = 0
       intersection_area <- 0
       
-      # Calculate intersection
+      # calculate intersection
       intersection <- suppressWarnings(st_intersection(species_range, biome_polygon))
       
-      # Calculate area if intersection exists
+      # calculate area if intersection exists
       if (length(intersection) > 0 &&
           !all(st_is_empty(intersection))) {
         
         intersection_area <- as.numeric(sum(st_area(intersection)) / 1e6)
       }
       
-      # Store results
+      # store stuff
       intersection_results[[paste(species, biome_name, sep = "_")]] <- data.frame(sci_name = species,
                                                                                   biome = biome_name,
                                                                                   total_range_km2 = total_area,
